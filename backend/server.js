@@ -5,6 +5,10 @@ import morgan from 'morgan'
 import cors from 'cors'
 
 import authRouter from './routes/auth.js'
+import itemsRouter from './routes/items.js'
+import suppliersRouter from './routes/suppliers.js'
+import stockRouter from './routes/stock.js'
+import dashboardRouter from './routes/dashboard.js'
 
 dotenv.config()
 
@@ -19,6 +23,10 @@ app.get('/health', (_req, res) => {
 })
 
 app.use('/api/auth', authRouter)
+app.use('/api/items', itemsRouter)
+app.use('/api/suppliers', suppliersRouter)
+app.use('/api/stock', stockRouter)
+app.use('/api/dashboard', dashboardRouter)
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/inventory'
 const PORT = process.env.PORT || 4000

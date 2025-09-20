@@ -1,17 +1,16 @@
 'use client'
 
 import React from 'react'
-
-type Tab = 'dashboard' | 'items' | 'suppliers' | 'stock' | 'reports' | 'settings'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 interface SidebarProps {
-  activeTab: Tab
-  setActiveTab: React.Dispatch<React.SetStateAction<Tab>>
   onLogout: () => void
   user: any
 }
 
-export default function AdminSidebar({ activeTab, setActiveTab, onLogout, user }: SidebarProps) {
+export default function AdminSidebar({ onLogout, user }: SidebarProps) {
+  const pathname = usePathname()
   return (
     <div className="w-64 bg-white shadow-lg fixed h-full">
       {/* Logo/Header */}
@@ -23,10 +22,10 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout, user }
       {/* Navigation */}
       <nav className="mt-6">
         <div className="px-3">
-          <button
-            onClick={() => setActiveTab('dashboard')}
+          <Link
+            href="/admin/dashboard"
             className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md mb-1 ${
-              activeTab === 'dashboard'
+              pathname === '/admin/dashboard'
                 ? 'bg-indigo-100 text-indigo-700'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
@@ -36,12 +35,12 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout, user }
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v6H8V5z" />
             </svg>
             Dashboard
-          </button>
+          </Link>
 
-          <button
-            onClick={() => setActiveTab('items')}
+          <Link
+            href="/admin/items"
             className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md mb-1 ${
-              activeTab === 'items'
+              pathname === '/admin/items'
                 ? 'bg-indigo-100 text-indigo-700'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
@@ -50,12 +49,12 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout, user }
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
             </svg>
             Items
-          </button>
+          </Link>
 
-          <button
-            onClick={() => setActiveTab('suppliers')}
+          <Link
+            href="/admin/suppliers"
             className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md mb-1 ${
-              activeTab === 'suppliers'
+              pathname === '/admin/suppliers'
                 ? 'bg-indigo-100 text-indigo-700'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
@@ -65,12 +64,12 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout, user }
               <circle cx="12" cy="7" r="4" />
             </svg>
             Suppliers
-          </button>
+          </Link>
 
-          <button
-            onClick={() => setActiveTab('stock')}
+          <Link
+            href="/admin/stock"
             className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md mb-1 ${
-              activeTab === 'stock'
+              pathname === '/admin/stock'
                 ? 'bg-indigo-100 text-indigo-700'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
@@ -80,12 +79,12 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout, user }
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 21h6m-7-4h8a2 2 0 002-2v-2H6v2a2 2 0 002 2z" />
             </svg>
             Stock
-          </button>
+          </Link>
 
-          <button
-            onClick={() => setActiveTab('reports')}
+          <Link
+            href="/admin/reports"
             className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md mb-1 ${
-              activeTab === 'reports'
+              pathname === '/admin/reports'
                 ? 'bg-indigo-100 text-indigo-700'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
@@ -94,12 +93,12 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout, user }
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V9a2 2 0 012-2h4a2 2 0 012 2v10M7 19h10" />
             </svg>
             Reports
-          </button>
+          </Link>
 
-          <button
-            onClick={() => setActiveTab('settings')}
+          <Link
+            href="/admin/settings"
             className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md mb-1 ${
-              activeTab === 'settings'
+              pathname === '/admin/settings'
                 ? 'bg-indigo-100 text-indigo-700'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
@@ -109,7 +108,7 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout, user }
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             Settings
-          </button>
+          </Link>
         </div>
       </nav>
 
