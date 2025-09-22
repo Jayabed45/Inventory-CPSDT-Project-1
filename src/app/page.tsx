@@ -124,7 +124,7 @@ export default function Home() {
                         id="email"
                         name="email"
                         type="email"
-                        placeholder="you@example.com"
+                        placeholder="your@email.domain.com"
                         className="w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
                         required
                         value={loginEmail}
@@ -220,7 +220,7 @@ export default function Home() {
                         id="regEmail"
                         name="email"
                         type="email"
-                        placeholder="you@example.com"
+                        placeholder="your@email.domain.com"
                         className="w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
                         required
                         value={regEmail}
