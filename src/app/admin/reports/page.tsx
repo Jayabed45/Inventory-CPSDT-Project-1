@@ -1,10 +1,239 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { dashboardApi, ApiError } from '../../../lib/api'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+
+// Extend jsPDF type to include autoTable properties
+interface jsPDFWithAutoTable extends jsPDF {
+  lastAutoTable: {
+    finalY: number
+  }
+}
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
+
+interface ReportData {
+  inventoryValue: any[]
+  categoryDistribution: any[]
+  topItems: any[]
+  metrics: {
+    totalItems: number
+    lowStockItems: number
+    totalSuppliers: number
+    inboundToday: number
+  }
+}
 
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState('30d')
   const [selectedReport, setSelectedReport] = useState('inventory')
+  const [reportData, setReportData] = useState<ReportData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+
+  useEffect(() => {
+    fetchReportData()
+  }, [selectedPeriod])
+
+  const fetchReportData = async () => {
+    try {
+      setLoading(true)
+      const [inventoryValue, categoryDistribution, topItems, overview] = await Promise.all([
+        dashboardApi.getInventoryValue(selectedPeriod),
+        dashboardApi.getCategoryDistribution(),
+        dashboardApi.getTopItems(5),
+        dashboardApi.getOverview()
+      ])
+
+      setReportData({
+        inventoryValue,
+        categoryDistribution,
+        topItems,
+        metrics: overview.metrics
+      })
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message)
+      } else {
+        setError('Failed to load report data')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const exportToPDF = async () => {
+    try {
+      setExportLoading(true)
+      const doc = new jsPDF() as jsPDFWithAutoTable
+      
+      // Add system header
+      doc.setFontSize(24)
+      doc.setFont('helvetica', 'bold')
+      doc.text('SmartStock Inventory Management System', 20, 20)
+      
+      // Add horizontal line under header
+      doc.setLineWidth(0.5)
+      doc.line(20, 25, 190, 25)
+      
+      // Add report title
+      doc.setFontSize(18)
+      doc.setFont('helvetica', 'normal')
+      doc.text('Inventory Report', 20, 40)
+      
+      // Add date and period info
+      doc.setFontSize(12)
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 50)
+      doc.text(`Period: ${selectedPeriod}`, 20, 60)
+      
+      // Add metrics
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Key Metrics', 20, 80)
+      
+      const metrics = [
+        ['Total Items', reportData?.metrics.totalItems || 0],
+        ['Low Stock Items', reportData?.metrics.lowStockItems || 0],
+        ['Active Suppliers', reportData?.metrics.totalSuppliers || 0],
+        ['Inbound Today', reportData?.metrics.inboundToday || 0]
+      ]
+      
+      autoTable(doc, {
+        startY: 90,
+        head: [['Metric', 'Value']],
+        body: metrics,
+        theme: 'grid'
+      })
+      
+      // Add category distribution
+      if (reportData?.categoryDistribution && reportData.categoryDistribution.length > 0) {
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
+        doc.text('Category Distribution', 20, doc.lastAutoTable.finalY + 20)
+        
+        const categoryData = reportData.categoryDistribution.map(cat => [
+          cat._id,
+          cat.count,
+          `${Math.round((cat.count / reportData.categoryDistribution.reduce((sum, c) => sum + c.count, 0)) * 100)}%`
+        ])
+        
+        autoTable(doc, {
+          startY: doc.lastAutoTable.finalY + 30,
+          head: [['Category', 'Count', 'Percentage']],
+          body: categoryData,
+          theme: 'grid'
+        })
+      }
+      
+      // Add top items
+      if (reportData?.topItems && reportData.topItems.length > 0) {
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
+        doc.text('Top Performing Items', 20, doc.lastAutoTable.finalY + 20)
+        
+        const topItemsData = reportData.topItems.map(item => [
+          item.name,
+          item.sku,
+          item.totalSold,
+          `₱${item.totalRevenue?.toLocaleString() || '0'}`,
+          `${item.profitMargin?.toFixed(1) || '0'}%`
+        ])
+        
+        autoTable(doc, {
+          startY: doc.lastAutoTable.finalY + 30,
+          head: [['Item', 'SKU', 'Sold', 'Revenue', 'Margin']],
+          body: topItemsData,
+          theme: 'grid'
+        })
+      }
+      
+      doc.save(`inventory-report-${selectedPeriod}.pdf`)
+      setShowExportModal(false)
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const exportToExcel = async () => {
+    try {
+      setExportLoading(true)
+      
+      // Create workbook
+      const workbook = XLSX.utils.book_new()
+      
+      // Metrics sheet
+      const metricsData = [
+        ['Metric', 'Value'],
+        ['Total Items', reportData?.metrics.totalItems || 0],
+        ['Low Stock Items', reportData?.metrics.lowStockItems || 0],
+        ['Active Suppliers', reportData?.metrics.totalSuppliers || 0],
+        ['Inbound Today', reportData?.metrics.inboundToday || 0]
+      ]
+      const metricsSheet = XLSX.utils.aoa_to_sheet(metricsData)
+      XLSX.utils.book_append_sheet(workbook, metricsSheet, 'Metrics')
+      
+      // Category distribution sheet
+      if (reportData?.categoryDistribution && reportData.categoryDistribution.length > 0) {
+        const categoryData = [
+          ['Category', 'Count', 'Percentage'],
+          ...reportData.categoryDistribution.map(cat => [
+            cat._id,
+            cat.count,
+            `${Math.round((cat.count / reportData.categoryDistribution.reduce((sum, c) => sum + c.count, 0)) * 100)}%`
+          ])
+        ]
+        const categorySheet = XLSX.utils.aoa_to_sheet(categoryData)
+        XLSX.utils.book_append_sheet(workbook, categorySheet, 'Categories')
+      }
+      
+      // Top items sheet
+      if (reportData?.topItems && reportData.topItems.length > 0) {
+        const topItemsData = [
+          ['Item', 'SKU', 'Units Sold', 'Revenue', 'Profit Margin'],
+          ...reportData.topItems.map(item => [
+            item.name,
+            item.sku,
+            item.totalSold,
+            item.totalRevenue || 0,
+            item.profitMargin || 0
+          ])
+        ]
+        const topItemsSheet = XLSX.utils.aoa_to_sheet(topItemsData)
+        XLSX.utils.book_append_sheet(workbook, topItemsSheet, 'Top Items')
+      }
+      
+      // Inventory value trend sheet
+      if (reportData?.inventoryValue && reportData.inventoryValue.length > 0) {
+        const trendData = [
+          ['Month/Year', 'Total Value', 'Item Count'],
+          ...reportData.inventoryValue.map(data => [
+            `${data._id.month}/${data._id.year}`,
+            data.totalValue,
+            data.itemCount
+          ])
+        ]
+        const trendSheet = XLSX.utils.aoa_to_sheet(trendData)
+        XLSX.utils.book_append_sheet(workbook, trendSheet, 'Inventory Trend')
+      }
+      
+      // Save file
+      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      saveAs(data, `inventory-report-${selectedPeriod}.xlsx`)
+      
+      setShowExportModal(false)
+    } catch (error) {
+      console.error('Error generating Excel:', error)
+    } finally {
+      setExportLoading(false)
+    }
+  }
 
   const reportTypes = [
     { id: 'inventory', name: 'Inventory Summary', description: 'Overview of current inventory levels' },
@@ -20,6 +249,26 @@ export default function ReportsPage() {
     { value: '1y', label: 'Last year' },
   ]
 
+  if (loading) {
+    return (
+      <section>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        </div>
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">Error: {error}</p>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section>
       <div className="flex justify-between items-center mb-6">
@@ -31,7 +280,7 @@ export default function ReportsPage() {
           <select
             value={selectedPeriod}
             onChange={(e) => setSelectedPeriod(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             {periodOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -39,7 +288,10 @@ export default function ReportsPage() {
               </option>
             ))}
           </select>
-          <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+          <button 
+            onClick={() => setShowExportModal(true)}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+          >
             Export Report
           </button>
         </div>
@@ -63,6 +315,74 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl border-2 border-indigo-200 shadow-xl p-6 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Export Report</h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-6">
+              Choose your preferred export format for the {selectedPeriod} report
+            </p>
+            
+            <div className="space-y-4">
+              <button
+                onClick={exportToPDF}
+                disabled={exportLoading}
+                className="w-full flex items-center justify-center gap-3 p-4 border-2 border-red-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                <div className="text-left">
+                  <div className="font-medium text-gray-900">Export as PDF</div>
+                  <div className="text-sm text-gray-500">Download as PDF document</div>
+                </div>
+                {exportLoading && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600"></div>
+                )}
+              </button>
+              
+              <button
+                onClick={exportToExcel}
+                disabled={exportLoading}
+                className="w-full flex items-center justify-center gap-3 p-4 border-2 border-green-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors disabled:opacity-50"
+              >
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div className="text-left">
+                  <div className="font-medium text-gray-900">Export as Excel</div>
+                  <div className="text-sm text-gray-500">Download as Excel spreadsheet</div>
+                </div>
+                {exportLoading && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600"></div>
+                )}
+              </button>
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -73,9 +393,9 @@ export default function ReportsPage() {
               </svg>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Total Value</p>
-              <p className="text-2xl font-semibold text-gray-900">$45,230</p>
-              <p className="text-xs text-green-600">+12.5% vs last period</p>
+              <p className="text-sm font-medium text-gray-500">Total Items</p>
+              <p className="text-2xl font-semibold text-gray-900">{reportData?.metrics.totalItems || 0}</p>
+              <p className="text-xs text-gray-500">Active inventory items</p>
             </div>
           </div>
         </div>
@@ -88,9 +408,9 @@ export default function ReportsPage() {
               </svg>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Turnover Rate</p>
-              <p className="text-2xl font-semibold text-gray-900">4.2x</p>
-              <p className="text-xs text-green-600">+0.3x vs last period</p>
+              <p className="text-sm font-medium text-gray-500">Inbound Today</p>
+              <p className="text-2xl font-semibold text-gray-900">{reportData?.metrics.inboundToday || 0}</p>
+              <p className="text-xs text-gray-500">Items received today</p>
             </div>
           </div>
         </div>
@@ -104,8 +424,8 @@ export default function ReportsPage() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Low Stock Items</p>
-              <p className="text-2xl font-semibold text-gray-900">23</p>
-              <p className="text-xs text-red-600">+3 vs last period</p>
+              <p className="text-2xl font-semibold text-gray-900">{reportData?.metrics.lowStockItems || 0}</p>
+              <p className="text-xs text-red-600">Need reordering</p>
             </div>
           </div>
         </div>
@@ -119,8 +439,8 @@ export default function ReportsPage() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Active Suppliers</p>
-              <p className="text-2xl font-semibold text-gray-900">12</p>
-              <p className="text-xs text-gray-500">No change</p>
+              <p className="text-2xl font-semibold text-gray-900">{reportData?.metrics.totalSuppliers || 0}</p>
+              <p className="text-xs text-gray-500">Vendor partners</p>
             </div>
           </div>
         </div>
@@ -131,45 +451,61 @@ export default function ReportsPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Inventory Value Trend</h3>
           <div className="h-64 flex items-end justify-between gap-2">
-            {[65, 72, 68, 75, 82, 78, 85, 88, 92, 89, 95, 98].map((height, index) => (
-              <div key={index} className="flex-1 flex flex-col items-center">
-                <div
-                  className="w-full bg-gradient-to-t from-indigo-500 to-indigo-300 rounded-t"
-                  style={{ height: `${height}%` }}
-                />
-                <span className="text-xs text-gray-500 mt-2">
-                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][index]}
-                </span>
+            {reportData?.inventoryValue && reportData.inventoryValue.length > 0 ? (
+              reportData.inventoryValue.map((data, index) => {
+                const maxValue = Math.max(...reportData.inventoryValue.map(d => d.totalValue))
+                const height = (data.totalValue / maxValue) * 100
+                return (
+                  <div key={index} className="flex-1 flex flex-col items-center">
+                    <div
+                      className="w-full bg-gradient-to-t from-indigo-500 to-indigo-300 rounded-t"
+                      style={{ height: `${height}%` }}
+                    />
+                    <span className="text-xs text-gray-500 mt-2">
+                      {data._id.month}/{data._id.year}
+                    </span>
+                  </div>
+                )
+              })
+            ) : (
+              <div className="flex items-center justify-center h-full w-full">
+                <p className="text-gray-500">No data available</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Category Distribution</h3>
           <div className="space-y-4">
-            {[
-              { name: 'Electronics', value: 45, color: 'bg-blue-500' },
-              { name: 'Cables', value: 25, color: 'bg-green-500' },
-              { name: 'Accessories', value: 20, color: 'bg-yellow-500' },
-              { name: 'Tools', value: 10, color: 'bg-red-500' },
-            ].map((category, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className={`w-3 h-3 rounded-full ${category.color} mr-3`} />
-                  <span className="text-sm text-gray-700">{category.name}</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-24 bg-gray-200 rounded-full h-2 mr-3">
-                    <div
-                      className={`h-2 rounded-full ${category.color}`}
-                      style={{ width: `${category.value}%` }}
-                    />
+            {reportData?.categoryDistribution && reportData.categoryDistribution.length > 0 ? (
+              reportData.categoryDistribution.map((category, index) => {
+                const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-purple-500']
+                const totalItems = reportData.categoryDistribution.reduce((sum, cat) => sum + cat.count, 0)
+                const percentage = Math.round((category.count / totalItems) * 100)
+                return (
+                  <div key={index} className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className={`w-3 h-3 rounded-full ${colors[index % colors.length]} mr-3`} />
+                      <span className="text-sm text-gray-700">{category._id}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="w-24 bg-gray-200 rounded-full h-2 mr-3">
+                        <div
+                          className={`h-2 rounded-full ${colors[index % colors.length]}`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">{percentage}%</span>
+                    </div>
                   </div>
-                  <span className="text-sm font-medium text-gray-900">{category.value}%</span>
-                </div>
+                )
+              })
+            ) : (
+              <div className="flex items-center justify-center h-full w-full">
+                <p className="text-gray-500">No data available</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -192,50 +528,40 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {[
-                { item: 'USB-C Cable 1m', sku: 'SKU-001', sold: 245, revenue: 3185, margin: 23.5, trend: 'up' },
-                { item: 'Wireless Mouse', sku: 'SKU-002', sold: 189, revenue: 5667, margin: 18.2, trend: 'up' },
-                { item: 'Mechanical Keyboard', sku: 'SKU-003', sold: 67, revenue: 6033, margin: 32.1, trend: 'down' },
-                { item: 'HDMI Cable 2m', sku: 'SKU-004', sold: 156, revenue: 1404, margin: 15.8, trend: 'up' },
-                { item: 'USB Hub 4-Port', sku: 'SKU-005', sold: 98, revenue: 2450, margin: 28.4, trend: 'stable' },
-              ].map((item, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{item.item}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{item.sku}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{item.sold}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">${item.revenue.toLocaleString()}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{item.margin}%</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      {item.trend === 'up' && (
+              {reportData?.topItems && reportData.topItems.length > 0 ? (
+                reportData.topItems.map((item, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{item.sku}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{item.totalSold}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">₱{item.totalRevenue?.toLocaleString() || '0'}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{item.profitMargin?.toFixed(1) || '0'}%</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
                         <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17l9.2-9.2M17 17V7H7" />
                         </svg>
-                      )}
-                      {item.trend === 'down' && (
-                        <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 7l-9.2 9.2M7 7v10h10" />
-                        </svg>
-                      )}
-                      {item.trend === 'stable' && (
-                        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                        </svg>
-                      )}
-                    </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                    No data available
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

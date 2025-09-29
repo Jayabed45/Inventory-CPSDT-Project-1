@@ -1,10 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+
+interface Settings {
+  companyName: string
+  email: string
+  timezone: string
+  currency: string
+  lowStockThreshold: number
+  autoReorder: boolean
+  emailNotifications: boolean
+  smsNotifications: boolean
+  twoFactorAuth: boolean
+  sessionTimeout: number
+}
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'general' | 'notifications' | 'security' | 'integrations'>('general')
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<Settings>({
     companyName: 'Inventory Management Co.',
     email: 'admin@inventory.com',
     timezone: 'UTC-5',
@@ -16,9 +29,38 @@ export default function SettingsPage() {
     twoFactorAuth: false,
     sessionTimeout: 30,
   })
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Load settings from localStorage or API
+    const savedSettings = localStorage.getItem('app_settings')
+    if (savedSettings) {
+      try {
+        setSettings(JSON.parse(savedSettings))
+      } catch (error) {
+        console.error('Failed to parse saved settings:', error)
+      }
+    }
+  }, [])
 
   const handleSettingChange = (key: string, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleSaveSettings = async () => {
+    try {
+      setLoading(true)
+      // Save to localStorage (in a real app, this would be saved to MongoDB)
+      localStorage.setItem('app_settings', JSON.stringify(settings))
+      setMessage('Settings saved successfully!')
+      setTimeout(() => setMessage(null), 3000)
+    } catch (error) {
+      setMessage('Failed to save settings')
+      setTimeout(() => setMessage(null), 3000)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -28,10 +70,25 @@ export default function SettingsPage() {
           <h2 className="text-lg font-semibold text-gray-900">Settings</h2>
           <p className="text-sm text-gray-600">Manage your application and account preferences</p>
         </div>
-        <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
-          Save Changes
+        <button 
+          onClick={handleSaveSettings}
+          disabled={loading}
+          className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+        >
+          {loading ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
+
+      {/* Success/Error Message */}
+      {message && (
+        <div className={`mb-6 p-4 rounded-lg ${
+          message.includes('successfully') 
+            ? 'bg-green-50 border border-green-200 text-green-800' 
+            : 'bg-red-50 border border-red-200 text-red-800'
+        }`}>
+          {message}
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="mb-6">
@@ -72,7 +129,7 @@ export default function SettingsPage() {
                   type="text"
                   value={settings.companyName}
                   onChange={(e) => handleSettingChange('companyName', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div>
@@ -81,7 +138,7 @@ export default function SettingsPage() {
                   type="email"
                   value={settings.email}
                   onChange={(e) => handleSettingChange('email', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div>
@@ -89,7 +146,7 @@ export default function SettingsPage() {
                 <select
                   value={settings.timezone}
                   onChange={(e) => handleSettingChange('timezone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="UTC-5">UTC-5 (EST)</option>
                   <option value="UTC-6">UTC-6 (CST)</option>
@@ -102,9 +159,9 @@ export default function SettingsPage() {
                 <select
                   value={settings.currency}
                   onChange={(e) => handleSettingChange('currency', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="USD">USD ($)</option>
+                  <option value="PHP">PHP (₱)</option>
                   <option value="EUR">EUR (€)</option>
                   <option value="GBP">GBP (£)</option>
                   <option value="CAD">CAD (C$)</option>
@@ -113,11 +170,11 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Inventory Settings</h3>
+          <div className="bg-white text-black rounded-xl border border-gray-200 p-6">
+            <h3 className="text-lg font-medium text-black mb-4">Inventory Settings</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Low Stock Threshold</label>
+                <label className="block text-black text-sm font-medium text-gray-700 mb-2">Low Stock Threshold</label>
                 <input
                   type="number"
                   value={settings.lowStockThreshold}

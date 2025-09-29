@@ -76,39 +76,42 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-white flex items-center justify-center p-6">
-      <div className="w-full max-w-md flex flex-col justify-center transform translate-y-6 sm:translate-y-10">
-        <div className="relative overflow-hidden">
-          <div className="mb-8 text-center">
-            <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-blue-600 text-white grid place-items-center">
-              {/* Placeholder lock icon */}
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-                <path fillRule="evenodd" d="M12 1.5a4.5 4.5 0 00-4.5 4.5v3H6A2.25 2.25 0 003.75 11.25v7.5A2.25 2.25 0 006 21h12a2.25 2.25 0 002.25-2.25v-7.5A2.25 2.25 0 0018 9H16.5V6A4.5 4.5 0 0012 1.5zm3 7.5V6a3 3 0 10-6 0v3h6z" clipRule="evenodd" />
-              </svg>
+    <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
+      <div className="w-full max-w-md">
+        {/* Auth Card */}
+        <div className="">
+          <div className="p-8">
+            {/* System Branding */}
+            <div className="text-center mb-8">
+              <div className="mx-auto mb-4 h-16 w-16 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white grid place-items-center shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8">
+                  <path d="M3.375 3C2.339 3 1.5 3.84 1.5 4.875v.75c0 1.036.84 1.875 1.875 1.875h17.25c1.035 0 1.875-.84 1.875-1.875v-.75C22.5 3.839 21.66 3 20.625 3H3.375z" />
+                  <path fillRule="evenodd" d="M3.087 9l.54 9.176A3 3 0 006.62 21h10.757a3 3 0 002.995-2.824L20.913 9H3.087zm6.163 3.75A.75.75 0 0110 12h4a.75.75 0 010 1.5h-4a.75.75 0 01-.75-.75z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">SmartStock</h1>
+              <p className="text-gray-600 text-sm mb-6">Inventory Management System</p>
+              
+              {/* <h2 className="text-xl font-semibold text-gray-900">
+                {isRegister ? 'Create Account' : 'Sign In'}
+              </h2>
+              <p className="mt-2 text-sm text-gray-600">
+                {isRegister ? 'Join us by creating your account' : 'Please sign in to your account'}
+              </p> */}
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-              {isRegister ? 'Create account' : 'Sign in'}
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              {isRegister ? 'Join us by creating your account.' : 'Welcome back. Please enter your details.'}
-            </p>
-          </div>
 
-          {/* Status messages */}
-          {(message || error) && (
-            <div className="mb-4 text-center">
-              {message && <p className="text-sm text-emerald-600">{message}</p>}
-              {error && <p className="text-sm text-red-600">{error}</p>}
-            </div>
-          )}
+            {/* Status messages */}
+            {(message || error) && (
+              <div className="mb-6 p-4 rounded-lg bg-gray-50">
+                {message && <p className="text-sm text-emerald-600 text-center">{message}</p>}
+                {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+              </div>
+            )}
 
-          {/* Slider container */}
-          <div className="relative w-full overflow-hidden">
-            <div
-              className={`flex w-[200%] transition-transform duration-500 ease-out ${isRegister ? '-translate-x-1/2' : 'translate-x-0'}`}
-            >
-              {/* Login panel */}
-              <div className="w-1/2 px-0">
+            {/* Auth Forms */}
+            {!isRegister ? (
+              /* Login Form */
+              <div>
                 <form className="space-y-5" onSubmit={handleLoginSubmit}>
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
@@ -174,21 +177,21 @@ export default function Home() {
                     </label>
                   </div>
 
-                  <button type="submit" disabled={loading} className="w-full rounded-xl bg-blue-600 text-white py-2.5 font-medium hover:bg-blue-700 disabled:opacity-70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 focus:ring-offset-white">
+                  <button type="submit" disabled={loading} className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all duration-200 shadow-lg">
                     {loading ? 'Signing in...' : 'Sign in'}
                   </button>
 
                   <p className="text-center text-sm text-gray-600">
                     Don’t have an account?{' '}
-                    <button type="button" onClick={() => setIsRegister(true)} className="font-medium text-blue-700 hover:underline">
+                    <button type="button" onClick={() => setIsRegister(true)} className="font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors">
                       Sign up
                     </button>
                   </p>
                 </form>
               </div>
-
-              {/* Registration panel */}
-              <div className="w-1/2 px-0">
+            ) : (
+              /* Registration Form */
+              <div>
                 <form className="space-y-5" onSubmit={handleRegisterSubmit}>
                   <div>
                     <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
@@ -260,19 +263,19 @@ export default function Home() {
                     />
                   </div>
 
-                  <button type="submit" disabled={loading} className="w-full rounded-xl bg-black text-white dark:bg-white dark:text-black py-2.5 font-medium hover:opacity-90 disabled:opacity-70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white focus:ring-offset-white dark:focus:ring-offset-neutral-900">
+                  <button type="submit" disabled={loading} className="w-full rounded-xl bg-gradient-to-r from-gray-800 to-gray-900 text-white py-3 font-medium hover:from-gray-900 hover:to-black disabled:opacity-70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-800 transition-all duration-200 shadow-lg">
                     {loading ? 'Creating...' : 'Create account'}
                   </button>
 
-                  <p className="text-center text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-center text-sm text-gray-600">
                     Already have an account?{' '}
-                    <button type="button" onClick={() => setIsRegister(false)} className="font-medium text-gray-800 hover:underline dark:text-gray-200">
+                    <button type="button" onClick={() => setIsRegister(false)} className="font-medium text-gray-800 hover:text-gray-900 hover:underline transition-colors">
                       Sign in
                     </button>
                   </p>
                 </form>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

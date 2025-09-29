@@ -1,47 +1,237 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { stockApi, itemsApi, suppliersApi, ApiError } from '../../../lib/api'
+
+interface StockTransaction {
+  _id: string
+  item: {
+    _id: string
+    name: string
+    sku: string
+  }
+  type: 'inbound' | 'outbound' | 'adjustment'
+  quantity: number
+  reason?: string
+  reference?: string
+  supplier?: {
+    _id: string
+    name: string
+    contactPerson: string
+  }
+  customer?: string
+  unitCost?: number
+  totalCost?: number
+  status: 'pending' | 'completed' | 'cancelled'
+  notes?: string
+  createdAt: string
+}
 
 export default function StockPage() {
   const [activeTab, setActiveTab] = useState<'inbound' | 'outbound' | 'adjustments'>('inbound')
-  
-  const [inboundTransactions] = useState([
-    { id: 1, item: 'USB-C Cable 1m', sku: 'SKU-001', quantity: 50, supplier: 'ACME Co.', date: '2024-01-15', type: 'Purchase Order', status: 'Completed' },
-    { id: 2, item: 'Wireless Mouse', sku: 'SKU-002', quantity: 25, supplier: 'TechCorp', date: '2024-01-14', type: 'Purchase Order', status: 'Pending' },
-    { id: 3, item: 'Mechanical Keyboard', sku: 'SKU-003', quantity: 10, supplier: 'KeyMaster', date: '2024-01-13', type: 'Return', status: 'Completed' },
-  ])
+  const [transactions, setTransactions] = useState<StockTransaction[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null)
+  const [items, setItems] = useState<any[]>([])
+  const [suppliers, setSuppliers] = useState<any[]>([])
+  const [formData, setFormData] = useState({
+    item: '',
+    type: 'inbound',
+    quantity: '',
+    reason: '',
+    reference: '',
+    supplier: '',
+    customer: '',
+    unitCost: '',
+    totalCost: '',
+    status: 'pending',
+    notes: ''
+  })
 
-  const [outboundTransactions] = useState([
-    { id: 1, item: 'USB-C Cable 1m', sku: 'SKU-001', quantity: 5, customer: 'Customer A', date: '2024-01-15', type: 'Sale', status: 'Completed' },
-    { id: 2, item: 'Wireless Mouse', sku: 'SKU-002', quantity: 2, customer: 'Customer B', date: '2024-01-14', type: 'Sale', status: 'Completed' },
-    { id: 3, item: 'HDMI Cable 2m', sku: 'SKU-004', quantity: 3, customer: 'Customer C', date: '2024-01-13', type: 'Sale', status: 'Pending' },
-  ])
+  useEffect(() => {
+    fetchTransactions()
+    fetchItems()
+    fetchSuppliers()
+  }, [page, search, status, activeTab])
 
-  const [adjustments] = useState([
-    { id: 1, item: 'USB Hub 4-Port', sku: 'SKU-005', quantity: -2, reason: 'Damaged goods', date: '2024-01-15', status: 'Completed' },
-    { id: 2, item: 'Mechanical Keyboard', sku: 'SKU-003', quantity: 1, reason: 'Found in warehouse', date: '2024-01-14', status: 'Completed' },
-  ])
-
-  const getCurrentData = () => {
-    switch (activeTab) {
-      case 'inbound': return inboundTransactions
-      case 'outbound': return outboundTransactions
-      case 'adjustments': return adjustments
-      default: return []
+  const fetchTransactions = async () => {
+    try {
+      setLoading(true)
+      const response = await stockApi.getAll({
+        page,
+        limit: 10,
+        type: activeTab === 'adjustments' ? 'adjustment' : activeTab,
+        status: status || undefined,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
+      })
+      setTransactions(response.transactions)
+      setTotalPages(response.totalPages)
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message)
+      } else {
+        setError('Failed to load transactions')
+      }
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const fetchItems = async () => {
+    try {
+      const response = await itemsApi.getAll({ limit: 100 })
+      setItems(response.items)
+    } catch (err) {
+      console.error('Failed to load items:', err)
+    }
+  }
+
+  const fetchSuppliers = async () => {
+    try {
+      const response = await suppliersApi.getAll({ limit: 100 })
+      setSuppliers(response.suppliers)
+    } catch (err) {
+      console.error('Failed to load suppliers:', err)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this transaction?')) return
+    
+    try {
+      await stockApi.delete(id)
+      fetchTransactions() // Refresh the list
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message)
+      } else {
+        setError('Failed to delete transaction')
+      }
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const transactionData = {
+        ...formData,
+        quantity: parseInt(formData.quantity),
+        unitCost: formData.unitCost ? parseFloat(formData.unitCost) : undefined,
+        totalCost: formData.totalCost ? parseFloat(formData.totalCost) : undefined,
+        item: formData.item || undefined,
+        supplier: formData.supplier || undefined
+      }
+      
+      if (editingTransaction) {
+        await stockApi.update(editingTransaction._id, transactionData)
+      } else {
+        await stockApi.create(transactionData)
+      }
+      
+      setShowAddModal(false)
+      setEditingTransaction(null)
+      setFormData({
+        item: '',
+        type: 'inbound',
+        quantity: '',
+        reason: '',
+        reference: '',
+        supplier: '',
+        customer: '',
+        unitCost: '',
+        totalCost: '',
+        status: 'pending',
+        notes: ''
+      })
+      fetchTransactions() // Refresh the list
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message)
+      } else {
+        setError(editingTransaction ? 'Failed to update transaction' : 'Failed to create transaction')
+      }
+    }
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleEdit = (transaction: StockTransaction) => {
+    setEditingTransaction(transaction)
+    setFormData({
+      item: transaction.item._id,
+      type: transaction.type,
+      quantity: transaction.quantity.toString(),
+      reason: transaction.reason || '',
+      reference: transaction.reference || '',
+      supplier: transaction.supplier?._id || '',
+      customer: transaction.customer || '',
+      unitCost: transaction.unitCost?.toString() || '',
+      totalCost: transaction.totalCost?.toString() || '',
+      status: transaction.status,
+      notes: transaction.notes || ''
+    })
+    setShowAddModal(true)
+  }
+
+  const handleCancel = () => {
+    setShowAddModal(false)
+    setEditingTransaction(null)
+    setFormData({
+      item: '',
+      type: 'inbound',
+      quantity: '',
+      reason: '',
+      reference: '',
+      supplier: '',
+      customer: '',
+      unitCost: '',
+      totalCost: '',
+      status: 'pending',
+      notes: ''
+    })
   }
 
   const getColumns = () => {
     switch (activeTab) {
       case 'inbound':
-        return ['Item', 'SKU', 'Quantity', 'Supplier', 'Date', 'Type', 'Status', 'Actions']
+        return ['Item', 'SKU', 'Quantity', 'Supplier', 'Date', 'Status', 'Actions']
       case 'outbound':
-        return ['Item', 'SKU', 'Quantity', 'Customer', 'Date', 'Type', 'Status', 'Actions']
+        return ['Item', 'SKU', 'Quantity', 'Customer', 'Date', 'Status', 'Actions']
       case 'adjustments':
         return ['Item', 'SKU', 'Quantity', 'Reason', 'Date', 'Status', 'Actions']
       default:
         return []
     }
+  }
+
+  if (loading && transactions.length === 0) {
+    return (
+      <section>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        </div>
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">Error: {error}</p>
+        </div>
+      </section>
+    )
   }
 
   return (
@@ -51,10 +241,196 @@ export default function StockPage() {
           <h2 className="text-lg font-semibold text-gray-900">Stock Operations</h2>
           <p className="text-sm text-gray-600">Manage incoming and outgoing stock movements</p>
         </div>
-        <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+        <button 
+          onClick={() => setShowAddModal(true)}
+          className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+        >
           New Transaction
         </button>
       </div>
+
+      {/* Add/Edit Transaction Popup */}
+      {showAddModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl border-2 border-indigo-200 shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingTransaction ? 'Edit Transaction' : 'Add New Transaction'}
+              </h3>
+              <button
+                onClick={handleCancel}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Item *</label>
+                  <select
+                    name="item"
+                    value={formData.item}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select Item</option>
+                    {items.map((item) => (
+                      <option key={item._id} value={item._id}>
+                        {item.name} ({item.sku})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Transaction Type *</label>
+                  <select
+                    name="type"
+                    value={formData.type}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="inbound">Inbound</option>
+                    <option value="outbound">Outbound</option>
+                    <option value="adjustment">Adjustment</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={formData.quantity}
+                    onChange={handleInputChange}
+                    required
+                    min="1"
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    name="status"
+                    value={formData.status}
+                    onChange={handleInputChange}
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
+              {formData.type === 'inbound' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+                  <select
+                    name="supplier"
+                    value={formData.supplier}
+                    onChange={handleInputChange}
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">No Supplier</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier._id} value={supplier._id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formData.type === 'outbound' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                  <input
+                    type="text"
+                    name="customer"
+                    value={formData.customer}
+                    onChange={handleInputChange}
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              )}
+
+              {formData.type === 'adjustment' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
+                  <input
+                    type="text"
+                    name="reason"
+                    value={formData.reason}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
+                  <input
+                    type="text"
+                    name="reference"
+                    value={formData.reference}
+                    onChange={handleInputChange}
+                    placeholder="PO number, order ID, etc."
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit Cost</label>
+                  <input
+                    type="number"
+                    name="unitCost"
+                    value={formData.unitCost}
+                    onChange={handleInputChange}
+                    step="0.01"
+                    min="0"
+                    className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  name="notes"
+                  value={formData.notes}
+                  onChange={handleInputChange}
+                  rows={3}
+                  className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
+                >
+                  {editingTransaction ? 'Update Transaction' : 'Add Transaction'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="mb-6">
@@ -105,7 +481,9 @@ export default function StockPage() {
             </div>
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-500">Inbound Today</p>
-              <p className="text-xl font-semibold text-gray-900">85</p>
+              <p className="text-xl font-semibold text-gray-900">
+                {transactions.filter(t => t.type === 'inbound' && new Date(t.createdAt).toDateString() === new Date().toDateString()).length}
+              </p>
             </div>
           </div>
         </div>
@@ -119,7 +497,9 @@ export default function StockPage() {
             </div>
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-500">Outbound Today</p>
-              <p className="text-xl font-semibold text-gray-900">42</p>
+              <p className="text-xl font-semibold text-gray-900">
+                {transactions.filter(t => t.type === 'outbound' && new Date(t.createdAt).toDateString() === new Date().toDateString()).length}
+              </p>
             </div>
           </div>
         </div>
@@ -133,7 +513,9 @@ export default function StockPage() {
             </div>
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-500">Pending Orders</p>
-              <p className="text-xl font-semibold text-gray-900">3</p>
+              <p className="text-xl font-semibold text-gray-900">
+                {transactions.filter(t => t.status === 'pending').length}
+              </p>
             </div>
           </div>
         </div>
@@ -146,8 +528,8 @@ export default function StockPage() {
               </svg>
             </div>
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Low Stock Items</p>
-              <p className="text-xl font-semibold text-gray-900">7</p>
+              <p className="text-sm font-medium text-gray-500">Total Transactions</p>
+              <p className="text-xl font-semibold text-gray-900">{transactions.length}</p>
             </div>
           </div>
         </div>
@@ -166,12 +548,19 @@ export default function StockPage() {
               <input
                 type="text"
                 placeholder="Search transactions..."
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="px-3 text-black py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
-              <select className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option>All Status</option>
-                <option>Completed</option>
-                <option>Pending</option>
+              <select 
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="px-3 text-black py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">All Status</option>
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </div>
           </div>
@@ -189,13 +578,13 @@ export default function StockPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {getCurrentData().map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-gray-50">
+              {transactions.map((transaction) => (
+                <tr key={transaction._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{transaction.item}</div>
+                    <div className="text-sm font-medium text-gray-900">{transaction.item.name}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{transaction.sku}</div>
+                    <div className="text-sm text-gray-500">{transaction.item.sku}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className={`text-sm font-medium ${
@@ -206,40 +595,47 @@ export default function StockPage() {
                   </td>
                   {activeTab === 'inbound' && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {transaction.supplier}
+                      {transaction.supplier?.name || 'No supplier'}
                     </td>
                   )}
                   {activeTab === 'outbound' && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {transaction.customer}
+                      {transaction.customer || 'No customer'}
                     </td>
                   )}
                   {activeTab === 'adjustments' && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {transaction.reason}
+                      {transaction.reason || 'No reason'}
                     </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {transaction.date}
+                    {new Date(transaction.createdAt).toLocaleDateString()}
                   </td>
-                  {activeTab !== 'adjustments' && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {transaction.type}
-                    </td>
-                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      transaction.status === 'Completed' 
+                      transaction.status === 'completed' 
                         ? 'bg-green-100 text-green-800' 
-                        : 'bg-yellow-100 text-yellow-800'
+                        : transaction.status === 'pending'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-red-100 text-red-800'
                     }`}>
-                      {transaction.status}
+                      {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
-                      <button className="text-indigo-600 hover:text-indigo-900">View</button>
-                      <button className="text-red-600 hover:text-red-900">Cancel</button>
+                      <button 
+                        onClick={() => handleEdit(transaction)}
+                        className="text-indigo-600 hover:text-indigo-900"
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(transaction._id)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>

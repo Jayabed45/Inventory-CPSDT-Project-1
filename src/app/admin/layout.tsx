@@ -78,7 +78,7 @@ export default function AdminLayout({
               <input
                 type="text"
                 placeholder="Search..."
-                className="w-64 pl-9 pr-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-64 text-black pl-9 pr-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </div>
             <div className="text-sm text-gray-600 w-[88px] text-right tabular-nums">{now}</div>

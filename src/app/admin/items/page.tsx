@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { itemsApi, suppliersApi, ApiError } from '../../../lib/api'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
 
 interface Item {
   _id: string
@@ -31,6 +35,8 @@ export default function ItemsPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<Item | null>(null)
   const [suppliers, setSuppliers] = useState<any[]>([])
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -174,6 +180,87 @@ export default function ItemsPage() {
     })
   }
 
+  const exportToPDF = async () => {
+    try {
+      setExportLoading(true)
+      const doc = new jsPDF()
+      
+      // Add title
+      doc.setFontSize(20)
+      doc.text('Inventory Items Report', 20, 20)
+      
+      // Add date
+      doc.setFontSize(12)
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30)
+      doc.text(`Total Items: ${items.length}`, 20, 40)
+      
+      // Add items table
+      const itemsData = items.map(item => [
+        item.name,
+        item.sku,
+        item.category,
+        item.stock.toString(),
+        `₱${item.price.toFixed(2)}`,
+        item.supplier?.name || 'No supplier',
+        item.isActive ? 'Active' : 'Inactive'
+      ])
+      
+      autoTable(doc, {
+        startY: 60,
+        head: [['Item Name', 'SKU', 'Category', 'Stock', 'Price', 'Supplier', 'Status']],
+        body: itemsData,
+        theme: 'grid',
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [59, 130, 246] }
+      })
+      
+      doc.save(`inventory-items-${new Date().toISOString().split('T')[0]}.pdf`)
+      setShowExportModal(false)
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const exportToExcel = async () => {
+    try {
+      setExportLoading(true)
+      
+      // Create workbook
+      const workbook = XLSX.utils.book_new()
+      
+      // Items data
+      const itemsData = [
+        ['Item Name', 'SKU', 'Category', 'Stock', 'Price', 'Supplier', 'Status', 'Min Stock'],
+        ...items.map(item => [
+          item.name,
+          item.sku,
+          item.category,
+          item.stock,
+          item.price,
+          item.supplier?.name || 'No supplier',
+          item.isActive ? 'Active' : 'Inactive',
+          item.minStock
+        ])
+      ]
+      
+      const itemsSheet = XLSX.utils.aoa_to_sheet(itemsData)
+      XLSX.utils.book_append_sheet(workbook, itemsSheet, 'Inventory Items')
+      
+      // Save file
+      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      saveAs(data, `inventory-items-${new Date().toISOString().split('T')[0]}.xlsx`)
+      
+      setShowExportModal(false)
+    } catch (error) {
+      console.error('Error generating Excel:', error)
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
   if (loading && items.length === 0) {
     return (
       <section>
@@ -201,12 +288,20 @@ export default function ItemsPage() {
           <h2 className="text-lg font-semibold text-gray-900">Inventory Items</h2>
           <p className="text-sm text-gray-600">Manage your inventory items and stock levels</p>
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          Add New Item
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setShowExportModal(true)}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Export Items
+          </button>
+          <button 
+            onClick={() => setShowAddModal(true)}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Add New Item
+          </button>
+        </div>
       </div>
 
       {/* Add/Edit Item Popup */}
@@ -370,6 +465,74 @@ export default function ItemsPage() {
         </div>
       )}
 
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl border-2 border-indigo-200 shadow-xl p-6 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Export Items</h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-6">
+              Choose your preferred export format for the inventory items
+            </p>
+            
+            <div className="space-y-4">
+              <button
+                onClick={exportToPDF}
+                disabled={exportLoading}
+                className="w-full flex items-center justify-center gap-3 p-4 border-2 border-red-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                <div className="text-left">
+                  <div className="font-medium text-gray-900">Export as PDF</div>
+                  <div className="text-sm text-gray-500">Download as PDF document</div>
+                </div>
+                {exportLoading && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600"></div>
+                )}
+              </button>
+              
+              <button
+                onClick={exportToExcel}
+                disabled={exportLoading}
+                className="w-full flex items-center justify-center gap-3 p-4 border-2 border-green-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors disabled:opacity-50"
+              >
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div className="text-left">
+                  <div className="font-medium text-gray-900">Export as Excel</div>
+                  <div className="text-sm text-gray-500">Download as Excel spreadsheet</div>
+                </div>
+                {exportLoading && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600"></div>
+                )}
+              </button>
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
@@ -437,7 +600,7 @@ export default function ItemsPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ${item.price.toFixed(2)}
+                    ₱{item.price.toFixed(2)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {item.supplier?.name || 'No supplier'}
