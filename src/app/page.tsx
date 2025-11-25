@@ -173,7 +173,7 @@ export default function Home() {
                   <div className="flex items-center justify-between">
                     <label className="inline-flex items-center gap-2">
                       <input type="checkbox" className="h-4 w-4 rounded border-gray-300 dark:border-white/20 text-black focus:ring-black dark:focus:ring-white" />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Remember me</span>
+                      <span className="text-sm text-black dark:text-black">Remember me</span>
                     </label>
                   </div>
 
